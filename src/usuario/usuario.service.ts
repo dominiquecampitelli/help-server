@@ -1,17 +1,22 @@
 import { Injectable, UnauthorizedException } from '@nestjs/common';
+import { JwtService } from '@nestjs/jwt';
 import * as bcrypt from 'bcrypt';
-import { CreateUsuarioDto } from './dto/create-usuario.dto';
+
+import { SignUpDto, SignInDto } from './dto/create-usuario.dto';
 import { UpdateUsuarioDto } from './dto/update-usuario.dto';
-import { PrismaService } from 'src/prisma.service';
+import { PrismaService } from '../prisma.service';
 
 @Injectable()
 export class UsuarioService {
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private jwtService: JwtService,
+  ) {}
 
-  async create(createUsuarioDto: CreateUsuarioDto) {
+  async signup(signUpDto: SignUpDto) {
     const userAlreadyExists = await this.prisma.user.findUnique({
       where: {
-        email: createUsuarioDto.email,
+        email: signUpDto.email,
       },
     });
 
@@ -20,7 +25,7 @@ export class UsuarioService {
     }
 
     const cpfAlreadyExists = await this.prisma.user.findUnique({
-      where: { cpf: createUsuarioDto.cpf },
+      where: { cpf: signUpDto.cpf },
     });
 
     if (cpfAlreadyExists) {
@@ -28,7 +33,7 @@ export class UsuarioService {
     }
 
     const rgAlreadyExists = await this.prisma.user.findUnique({
-      where: { rg: createUsuarioDto.rg },
+      where: { rg: signUpDto.rg },
     });
 
     if (rgAlreadyExists) {
@@ -36,18 +41,18 @@ export class UsuarioService {
     }
 
     const cellphoneAlreadyExists = await this.prisma.user.findUnique({
-      where: { cellphone: createUsuarioDto.cellphone },
+      where: { cellphone: signUpDto.cellphone },
     });
 
     if (cellphoneAlreadyExists) {
       throw new UnauthorizedException('Cellphone already registered');
     }
 
-    const hashedPassword = await bcrypt.hash(createUsuarioDto.password, 10);
+    const hashedPassword = await bcrypt.hash(signUpDto.password, 10);
 
     const user = await this.prisma.user.create({
       data: {
-        ...createUsuarioDto,
+        ...signUpDto,
         password: hashedPassword,
       },
     });
@@ -63,6 +68,41 @@ export class UsuarioService {
       cellphone: user.cellphone,
       created_at: user.createdAt,
     };
+  }
+
+  async signin(signInDto: SignInDto) {
+    const user = await this.prisma.user.findUnique({
+      where: {
+        email: signInDto.email,
+      },
+    });
+
+    if (!user) {
+      throw new UnauthorizedException('Invalid credentials');
+    }
+
+    const passwordMatch = await bcrypt.compare(
+      signInDto.password,
+      user.password,
+    );
+
+    if (!passwordMatch) {
+      throw new UnauthorizedException('Invalid credentials');
+    }
+
+    const accessToken = await this.jwtService.signAsync({
+      id: user.id,
+      name: user.name,
+      lastName: user.lastName,
+      address: user.address,
+      cpf: user.cpf,
+      rg: user.rg,
+      email: user.email,
+      cellphone: user.cellphone,
+      created_at: user.createdAt,
+    });
+
+    return {accessToken};
   }
 
   async findAll() {
